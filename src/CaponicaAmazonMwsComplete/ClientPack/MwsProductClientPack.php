@@ -53,6 +53,10 @@ class MwsProductClientPack extends MwsProductClient implements ThrottleAwareClie
     const PARAM_SELLER_SKU                      = 'SellerSKU';
     const PARAM_SELLER_SKU_LIST                 = 'SellerSKUList';
     const PARAM_FEES_ESTIMATE_REQUEST_LIST      = 'FeesEstimateRequestList';
+    const PARAM_EXCLUDE_ME                      = 'ExcludeMe';
+
+    const TEXT_TRUE                             = 'true';
+    const TEXT_FALSE                            = 'false';
 
     const QUERY_CONTEXT_ALL                     = 'All';
     const QUERY_CONTEXT_APPAREL                 = 'Apparel';
@@ -181,12 +185,15 @@ class MwsProductClientPack extends MwsProductClient implements ThrottleAwareClie
     /**
      * @param string|array $asinList    One or more ASINs to lookup
      * @param string $itemCondition     Defaults to ITEM_CONDITION_TEXT_NEW
+     * @param boolean $excludeMe        Defaults to false
      * @return \MarketplaceWebServiceProducts_Model_GetLowestOfferListingsForASINResponse
      */
-    public function callGetLowestOfferListingsForASIN($asinList, $itemCondition = self::ITEM_CONDITION_TEXT_NEW) {
+    public function callGetLowestOfferListingsForASIN($asinList, $itemCondition = self::ITEM_CONDITION_TEXT_NEW,
+                                                      $excludeMe = false) {
         $options = [
             self::PARAM_ASIN_LIST       => array('ASIN' => $asinList),
             self::PARAM_ITEM_CONDITION  => $itemCondition,
+            self::PARAM_EXCLUDE_ME      => $excludeMe ? self::TEXT_TRUE : self::TEXT_FALSE,
         ];
         $weight = is_array($asinList) ? count($asinList) : 1;
 
@@ -528,9 +535,11 @@ class MwsProductClientPack extends MwsProductClient implements ThrottleAwareClie
      *
      * @param string|array $asinList
      * @param $itemCondition
+     * @param $excludeMe
      * @return null|MwsLowestOfferListing[][]   An array (indexed by ASIN) of arrays of MwsLowestOfferListing
      */
-    public function retrieveLowestOfferListingsForASIN($asinList, $itemCondition = self::ITEM_CONDITION_TEXT_NEW) {
+    public function retrieveLowestOfferListingsForASIN($asinList, $itemCondition = self::ITEM_CONDITION_TEXT_NEW,
+                                                       $excludeMe = false) {
         if (empty($asinList)) {
             $this->logMessage("No terms to search for.", LoggerService::DEBUG);
             return null;
@@ -538,7 +547,7 @@ class MwsProductClientPack extends MwsProductClient implements ThrottleAwareClie
 
         try {
             /** @var \MarketplaceWebServiceProducts_Model_GetLowestOfferListingsForASINResponse $lolResponse */
-            $lolResponse = $this->callGetLowestOfferListingsForASIN($asinList, $itemCondition);
+            $lolResponse = $this->callGetLowestOfferListingsForASIN($asinList, $itemCondition, $excludeMe);
         } catch (\MarketplaceWebServiceProducts_Exception $e) {
             if ('RequestThrottled' == $e->getErrorCode()) {
                 $this->logMessage("The request was throttled (twice)", LoggerService::ERROR);
