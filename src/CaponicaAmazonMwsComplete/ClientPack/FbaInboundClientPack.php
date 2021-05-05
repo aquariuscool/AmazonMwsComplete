@@ -11,6 +11,7 @@ use CaponicaAmazonMwsComplete\Domain\Inbound\AsinList;
 use CaponicaAmazonMwsComplete\Domain\Inbound\InboundShipmentHeader;
 use CaponicaAmazonMwsComplete\Domain\Inbound\InboundShipmentItemList;
 use CaponicaAmazonMwsComplete\Domain\Inbound\InboundShipmentPlanRequestItemList;
+use CaponicaAmazonMwsComplete\Domain\Inbound\PackageIdentifiers;
 use CaponicaAmazonMwsComplete\Domain\Inbound\SellerSkuList;
 use CaponicaAmazonMwsComplete\Domain\Inbound\TransportDetailInput;
 use CaponicaAmazonMwsComplete\Domain\Throttle\ThrottleAwareClientPackInterface;
@@ -55,6 +56,9 @@ class FbaInboundClientPack extends FbaInboundClient implements ThrottleAwareClie
     const PARAM_IS_PARTNERED = 'IsPartnered';
     const PARAM_SHIPMENT_TYPE = 'ShipmentType';
     const PARAM_TRANSPORT_DETAILS = 'TransportDetails';
+    const PARAM_PAGE_TYPE = 'PageType';
+    const PARAM_PACKAGE_LABELS_TO_PRINT = 'PackageLabelsToPrint';
+    const PARAM_NUMBER_OF_PACKAGES = 'NumberOfPackages';
 
     const METHOD_CREATE_INBOUND_SHIPMENT_PLAN = 'createInboundShipmentPlan';
     const METHOD_CREATE_INBOUND_SHIPMENT = 'createInboundShipment';
@@ -67,6 +71,8 @@ class FbaInboundClientPack extends FbaInboundClient implements ThrottleAwareClie
     const METHOD_GET_INBOUND_GUIDANCE_FOR_ASIN = 'getInboundGuidanceForASIN';
     const METHOD_PUT_TRANSPORT_CONTENT = 'putTransportContent';
     const METHOD_GET_TRANSPORT_CONTENT = 'getTransportContent';
+    const METHOD_GET_UNIQUE_PACKAGE_LABELS = 'getUniquePackageLabels';
+    const METHOD_GET_PACKAGE_LABELS = 'getPackageLabels';
 
     const STATUS_WORKING    = 'WORKING';
     const STATUS_SHIPPED    = 'SHIPPED';
@@ -78,6 +84,26 @@ class FbaInboundClientPack extends FbaInboundClient implements ThrottleAwareClie
     const STATUS_CANCELLED  = 'CANCELLED';
     const STATUS_DELETED    = 'DELETED';
     const STATUS_ERROR      = 'ERROR';
+
+    /**
+     * PackageLabel_Letter_2 - Two labels per US Letter label sheet.
+     *   This is the only valid value for Amazon-partnered shipments in the US that use UPS as the carrier.
+     *   Supported in Canada and the US.
+     * PackageLabel_Letter_6 - Six labels per US Letter label sheet.
+     *   This is the only valid value for non-Amazon-partnered shipments in the US.
+     *   Supported in Canada and the US.
+     * PackageLabel_A4_2 - Two labels per A4 label sheet.
+     *   Supported in France, Germany, Italy, Spain, and the UK.
+     * PackageLabel_A4_4 - Four labels per A4 label sheet.
+     *   Supported in France, Germany, Italy, Spain, and the UK.
+     * PackageLabel_Plain_Paper. One label per sheet of US Letter paper.
+     *   Only for non-Amazon-partnered shipments. Supported in all marketplaces.
+     */
+    const PAGE_TYPE_PACKAGE_LABEL_LETTER_2 = 'PackageLabel_Letter_2';
+    const PAGE_TYPE_PACKAGE_LABEL_LETTER_6 = 'PackageLabel_Letter_6';
+    const PAGE_TYPE_PACKAGE_LABEL_A4_2 = 'PackageLabel_A4_2';
+    const PAGE_TYPE_PACKAGE_LABEL_A4_4 = 'PackageLabel_A4_4';
+    const PAGE_TYPE_PACKAGE_LABEL_PLAIN_PAPER = 'PackageLabel_Plain_Paper';
 
     public static function getAllShipmentStatuses() {
         return [
@@ -157,6 +183,8 @@ class FbaInboundClientPack extends FbaInboundClient implements ThrottleAwareClie
             self::METHOD_GET_INBOUND_GUIDANCE_FOR_ASIN             => [200, 200],
             self::METHOD_PUT_TRANSPORT_CONTENT                     => [30, 2],
             self::METHOD_GET_TRANSPORT_CONTENT                     => [30, 2],
+            self::METHOD_GET_PACKAGE_LABELS                        => [30, 2],
+            self::METHOD_GET_UNIQUE_PACKAGE_LABELS                 => [30, 2],
         ]);
     }
 
@@ -505,6 +533,93 @@ class FbaInboundClientPack extends FbaInboundClient implements ThrottleAwareClie
     }
 
     /**
+     * Get Package Labels
+     * Returns package labels.
+     *
+     * @param string      $shipmentId
+     * @param string      $pageType          One of the PAGE_TYPE_XYZ values
+     * @param int|null    $numberOfPackages  Indicates the number of packages in the shipment.
+     *
+     * @throws \FBAInboundServiceMWS_Exception
+     *
+     * @return \FBAInboundServiceMWS_Model_GetPackageLabelsResponse
+     */
+
+    public function callGetPackageLabels($shipmentId, $pageType, $numberOfPackages = null)
+    {
+        $requestArray = [
+            self::PARAM_SHIPMENT_ID => $shipmentId,
+            self::PARAM_PAGE_TYPE => $pageType,
+        ];
+
+        if ( ! empty($numberOfPackages)) {
+            $requestArray[self::PARAM_NUMBER_OF_PACKAGES] = $numberOfPackages;
+        }
+
+        $requestArray = $this->signArray($requestArray);
+
+        return CaponicaClientPack::throttledCall($this, self::METHOD_GET_PACKAGE_LABELS, $requestArray);
+    }
+
+
+    /**
+     * Get Unique Package Labels
+     * Returns unique package labels for faster and more accurate shipment
+     * processing at the Amazon fulfillment center.
+     *
+     * @param string      $shipmentId
+     * @param string      $pageType          One of the PAGE_TYPE_XYZ values
+     * @param PackageIdentifiers    $packageLabelsToPrint CartonId values previously passed using the FBA Inbound Shipment Carton Information Feed
+     *
+     * @throws \FBAInboundServiceMWS_Exception
+     *
+     * @return \FBAInboundServiceMWS_Model_GetUniquePackageLabelsResponse
+     */
+    public function callGetUniquePackageLabels($shipmentId, $pageType, $packageLabelsToPrint)
+    {
+        $requestArray = [
+            self::PARAM_SHIPMENT_ID => $shipmentId,
+            self::PARAM_PAGE_TYPE => $pageType,
+            self::PARAM_PACKAGE_LABELS_TO_PRINT => ['member' => $packageLabelsToPrint->toArray()],
+        ];
+
+        $requestArray = $this->signArray($requestArray);
+
+        return CaponicaClientPack::throttledCall($this, self::METHOD_GET_UNIQUE_PACKAGE_LABELS, $requestArray);
+    }
+
+    /**
+     * Uses the Amazon API to call callGetPackageLabels() and return PDF content
+     */
+    public function retrievePackageLabelsFile($shipmentId, $pageType, $numberOfPackages)
+    {
+        try {
+            $response = $this->callGetPackageLabels($shipmentId, $pageType, $numberOfPackages);
+        } catch (\FBAInboundServiceMWS_Exception $e) {
+            if ('RequestThrottled' == $e->getErrorCode()) {
+                $this->logMessage("The request was throttled (twice)", LoggerService::ERROR);
+            } else {
+                $this->logMessage(
+                    "There was a problem retrieving package labels for :".$shipmentId,
+                    LoggerService::ERROR
+                );
+            }
+            $this->debugException($e);
+            return null;
+        }
+
+        /** @var \FBAInboundServiceMWS_Model_GetPackageLabelsResult $result */
+        $result = $response->getGetPackageLabelsResult();
+        /** @var \FBAInboundServiceMWS_Model_TransportDocument $transportDoc */
+        $transportDoc = $result->getTransportDocument();
+
+        $filePath = tempnam('/tmp', 'package_labels_') . '.zip';
+        file_put_contents($filePath, base64_decode($transportDoc->getPdfDocument()));
+
+        return $filePath;
+    }
+
+    /**
      * Logs with an arbitrary level.
      *
      * @param mixed  $level
@@ -521,5 +636,18 @@ class FbaInboundClientPack extends FbaInboundClient implements ThrottleAwareClie
         } else {
             LoggerService::logMessage($message, $level, $context);
         }
+    }
+
+    private function debugException(\FBAInboundServiceMWS_Exception $e) {
+        $this->logMessage(
+            "Exception details:".
+            "\nCode:    ".$e->getErrorCode().
+            "\nError:   ".$e->getErrorMessage().
+            "\nMessage: ".$e->getMessage().
+            "\nXML:     ".$e->getXML().
+            "\nHeaders: ".$e->getResponseHeaderMetadata()
+            ,
+            LoggerService::ERROR
+        );
     }
 }
